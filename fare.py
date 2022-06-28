@@ -2,14 +2,16 @@ from requests import get
 from math import floor
 from bs4 import BeautifulSoup
 
-station_from = "Holmwood"  #Gatwick
-station_to = "Leicester"  # Lincoln
+station_from = "Lincoln"  #Gatwick
+station_to = "Holmwood"  # Lincoln
+# todo add return caclulation
 arr_or_dep = "dep"
-dates = ["02-07-22", "09-07-22", "16-07-22", "23-07-22"]
-time_from = "10:01"
-time_to = "19:59"
+dates = ["09-07-22"]  #dates = ["02-07-22", "09-07-22", "16-07-22", "23-07-22"]
+time_from = "14:00"
+time_to = "18:00"
+# todo add multiple people
+# todo logic for time tolerance
 price_tolerance = 1.5
-#time_tolerance = 2
 saver_16_17 = True
 saver_16_25 = False
 
@@ -21,7 +23,6 @@ elif saver_16_25:
 from_code = get(f"https://www.brfares.com/ac_loc?term={station_from}").json()[0]["code"]
 to_code = get(f"https://www.brfares.com/ac_loc?term={station_to}").json()[0]["code"]
 url = f"https://www.brfares.com/querysimple?orig={from_code}&dest={to_code}&rlc={saver}"
-print(url)
 prices = get(url).json()['fares']
 p_bands = []
 train_bands = {}
@@ -29,8 +30,6 @@ for price in prices:
     train_bands.update({int(price['adult']['fare'])/100: []})
     p_bands.append(int(price['adult']['fare'])/100)
 print(f"There is {len(p_bands)} price bands, cheapest 3 are {p_bands[-4:-1]}")
-
-
 print(f"Starting scan between {dates[0]} {time_from} and {dates[-1]} {time_to}")
 
 trains = []
@@ -38,8 +37,6 @@ cheapest_price = p_bands[0]
 p_bands = [p for p in p_bands if p <= round(p_bands[-1]*price_tolerance, 2)]
 fastest_train = 9999
 
-# todo logic for multiple days
-# todo logic for time tolerance
 for date in dates:
     print(f"Scanning {date}")
     t_fr, t_to = time_from.replace(":", ""), time_to.replace(":", "")
@@ -151,9 +148,25 @@ for date in dates:
 t_bands_count = 0
 for band in train_bands:
     t_bands_count += len(train_bands[band])
-print(f"\nFound {t_bands_count} trains")
+print(f"\n-------------------------------------\nFound {t_bands_count} trains")
 
 if not len(trains) == 0:
+    if price_tolerance:
+        print(f"\nTrains above £{round(p_bands[-1] * price_tolerance, 2)} have been excluded")
+    print("Standard prices:")
+    standard_off_r = None
+    for t_price in prices:
+        if t_price['ticket']['longname'] != "ADVANCE":
+            price = int(t_price['adult']['fare'])/100*2
+            if saver_16_17:
+                price *= 0.5
+            elif saver_16_25:
+                price *= 0.66
+                price = floor(price * 20)/20
+            print(f"{t_price['ticket']['longname']} - £{price}")
+            if t_price['ticket']['longname'] == "SUPER OFFPEAK R":
+                standard_off_r = price
+
     print(f"Fastest train is {fastest_train} minutes")
     print(f"Cheapest train(s) £{cheapest_price}")
     band_num = 0
@@ -167,15 +180,15 @@ if not len(trains) == 0:
                     price *= 0.5
                 elif saver_16_25:
                     price *= 0.66
-                    price = floor(price * 20) / 20
+                    price = floor(price * 20)/20
                 print(f"{date} - Dep {train['departureStationCRS']} {train['departureTime']} -> "
                       f"Arr {train['arrivalStationCRS']} {train['arrivalTime']} "
                       f"({train['durationHours']}h{train['durationMinutes']}m) {train['changes']} change(s) "
                       f"£{price} on {train['fareProvider']} - Ticket: {url}")
-            print(f"Return estimated price: £{price * 2}")
-
-if price_tolerance:
-    print(f"\nTrains above £{round(p_bands[-1]*price_tolerance,2)} have been excluded")
-
-
-
+            if standard_off_r is not None:
+                print(f"Return estimated price: £{price*2}, An £{round(standard_off_r-price*2, 2)} "
+                      f"saving (£{standard_off_r} SOPR)")
+                if price*2 > standard_off_r:
+                    print("\n[!] Standard off-peak return is cheaper than advance single tickets")
+            else:
+                print(f"Return estimated price: £{price*2}")

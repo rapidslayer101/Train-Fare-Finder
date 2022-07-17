@@ -4,8 +4,8 @@ from bs4 import BeautifulSoup
 
 providers = {"London Northwestern Railway": "LNER", "Avanti West Coast": "Avanti", "South Western Railway": "SWR"}
 return_types = {"SUPER OFFPEAK R": "SOPR", "OFF-PEAK R": "OPR", "OFF-PEAK DAY R": "OPDR", "SUP OFFPK DAY R": "SOPDR"}
-station_from = "Rugby"  #Gatwick
-station_to = "Windermere"  # Lincoln
+station_from = "Rugby"  #Gatwick  # todo multiple departure stations
+station_to = "Birmingham"  # Lincoln
 # todo add return calculation
 arr_or_dep = "dep"
 dates_out = ["11-08-22", "12-08-22"]
@@ -21,6 +21,7 @@ price_tolerance = 1.5
 adults = 2
 saver_16_17 = 1
 saver_16_25 = False
+max_split = 2
 try:
     from_code = get(f"https://www.brfares.com/ac_loc?term={station_from}").json()[0]["code"]
 except IndexError:
@@ -44,11 +45,11 @@ def price_calc(original_price):
     for i in range(adults):
         if saver_16_17_s:
             saver_16_17_s -= 1
-            _price += original_price * 0.5
+            _price += original_price*0.5
         else:
             if saver_16_25:
                 saver_16_25_s -= 1
-                _price += floor(original_price * 0.66 * 20) / 20
+                _price += floor(original_price*0.66*20)/20
             else:
                 _price += original_price
     return _price
@@ -73,8 +74,14 @@ print(f"There is {len(p_bands)} price bands, cheapest 3 are {p_bands[:3]}")
 print(f"Starting scan between {dates_out[0]} and {dates_out[-1]} between {time_to_out} and {time_from_out}")
 
 for date in dates_out:
-    print(f"Scanning {date}")
     t_fr, t_to = time_from_out.replace(":", ""), time_to_out.replace(":", "")
+    day, month, year = date.split("-")
+    rtt_trains = get(f"https://www.realtimetrains.co.uk/search/detailed/gb-nr:{from_code}/{f'20{year}-{month}-{day}'}/"
+                     f"{t_fr}-{t_to}?stp=WVS&show=pax-calls&order=wtt").text.split('<a class="service " href="')[1:-1]
+    print(f"https://www.realtimetrains.co.uk/search/detailed/gb-nr:{from_code}/{f'20{year}-{month}-{day}'}/"
+                     f"{t_fr}-{t_to}?stp=WVS&show=pax-calls&order=wtt")
+    print(f"Found {len(rtt_trains)} RTT for {date}")
+    print(f"Scanning train for {date}")
     date = date.replace("-", "")
     trains_day = []
     train_saved = None
@@ -125,38 +132,42 @@ for date in dates_out:
                 try:
                     train['fareProvider'] = providers[train['fareProvider']]
                 except KeyError:
-                    pass  # print(train['fareProvider'])
+                    pass
                 print(f"Dep {train['departureStationCRS']} {train['departureTime']} -> "
                       f"Arr {train['arrivalStationCRS']} {train['arrivalTime']} "
                       f"({train['durationHours']}h{train['durationMinutes']}m) {train['changes']} 🔄 "
                       f"£{price} on {train['fareProvider']}")
+                for rtt_train in rtt_trains:
+                    if train['departureTime'].replace(":", "") in rtt_train:
+                        rtt_train = rtt_train.split('"><div class=')[0]
+                        print(f"https://www.realtimetrains.co.uk/{rtt_train}")
+                #if
             except SyntaxError:
                 pass
             except IndexError:
                 print("Train does not offer Advance (Standard Class)")
 
-        if arr_or_dep == "dep":
-            if train_saved is None:
-                if int(t_to) < int(t_fr):
+        if train_saved is None:
+            if int(t_to) < int(t_fr):
+                break
+        else:
+            if int(t_to) > int(train_saved['departureTime'].replace(":", "")):
+                new_tf = str(int(train_saved['departureTime'].replace(":", ""))+6)
+                if int(new_tf) < int(t_fr):  # todo remove next day trains
                     break
+                if len(new_tf) == 3:
+                    new_tf = "0"+new_tf
+                if int(new_tf[-2:]) >= 60:
+                    new_tf1 = str(int(new_tf[:-2])+1)
+                    if len(new_tf1) == 1:
+                        new_tf1 = "0"+new_tf1
+                    new_tf2 = str(int(new_tf[-2:])-60)
+                    if len(new_tf2) == 1:
+                        new_tf2 = "0"+new_tf2
+                    new_tf = new_tf1+new_tf2
+                t_fr = new_tf
             else:
-                if int(t_to) > int(train_saved['departureTime'].replace(":", "")):
-                    new_tf = str(int(train_saved['departureTime'].replace(":", ""))+6)
-                    if int(new_tf) < int(t_fr):  # todo remove next day trains
-                        break
-                    if len(new_tf) == 3:
-                        new_tf = "0"+new_tf
-                    if int(new_tf[-2:]) >= 60:
-                        new_tf1 = str(int(new_tf[:-2])+1)
-                        if len(new_tf1) == 1:
-                            new_tf1 = "0"+new_tf1
-                        new_tf2 = str(int(new_tf[-2:])-60)
-                        if len(new_tf2) == 1:
-                            new_tf2 = "0"+new_tf2
-                        new_tf = new_tf1+new_tf2
-                    t_fr = new_tf
-                else:
-                    break
+                break
         if len(t_trains) == 0:
             print(url)
             train_saved = None
@@ -183,7 +194,7 @@ if not len(trains) == 0:
         if t_price['ticket']['longname'] not in ["ADVANCE", "ADVANCE 1ST"]:
             try:
                 price = round(price_calc(int(t_price['adult']['fare'])/100), 2)
-                if highest_price*3 > price > 1.50:
+                if highest_price*3 > price > 1.10:
                     print(f"{t_price['ticket']['longname']} - £{price}")
                     if t_price['ticket']['longname'] in ["SUPER OFFPEAK R", "OFF-PEAK R", "OFF-PEAK DAY R",
                                                          "SUP OFFPK DAY R"]:
@@ -193,7 +204,7 @@ if not len(trains) == 0:
                 pass
 
     print(f"Fastest train is {fastest_train} minutes")
-    print(f"Cheapest train(s) £{cheapest_price}")
+    print(f"Cheapest advance train(s) £{cheapest_price}")
     band_num = 0
     for p_band in p_bands:
         band_num += 1

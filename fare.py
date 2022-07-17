@@ -4,8 +4,8 @@ from bs4 import BeautifulSoup
 
 providers = {"London Northwestern Railway": "LNER", "Avanti West Coast": "Avanti", "South Western Railway": "SWR"}
 return_types = {"SUPER OFFPEAK R": "SOPR", "OFF-PEAK R": "OPR", "OFF-PEAK DAY R": "OPDR", "SUP OFFPK DAY R": "SOPDR"}
-station_from = "Holmwood"  #Gatwick
-station_to = "Lincoln"  # Lincoln
+station_from = "Rugby"  #Gatwick
+station_to = "Windermere"  # Lincoln
 # todo add return calculation
 arr_or_dep = "dep"
 dates_out = ["11-08-22", "12-08-22"]
@@ -18,7 +18,7 @@ time_to_ret = "10:00"
 # todo logic for time tolerance
 # todo split tickets
 price_tolerance = 1.5
-adults = 1
+adults = 2
 saver_16_17 = 1
 saver_16_25 = False
 try:
@@ -182,15 +182,13 @@ if not len(trains) == 0:
     for t_price in prices:
         if t_price['ticket']['longname'] not in ["ADVANCE", "ADVANCE 1ST"]:
             try:
-                price = price_calc(int(t_price['adult']['fare'])/100*2)
-                # todo remove highest prices
+                price = round(price_calc(int(t_price['adult']['fare'])/100), 2)
                 if highest_price*3 > price > 1.50:
-                    price = price_calc(price)
                     print(f"{t_price['ticket']['longname']} - £{price}")
                     if t_price['ticket']['longname'] in ["SUPER OFFPEAK R", "OFF-PEAK R", "OFF-PEAK DAY R",
                                                          "SUP OFFPK DAY R"]:
                         if price < off_r[0]:
-                            off_r = [price, return_types[t_price['ticket']['longname']]]
+                            off_r = [round(price, 2), return_types[t_price['ticket']['longname']]]
             except KeyError:
                 pass
 

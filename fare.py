@@ -1,51 +1,25 @@
 from requests import get
-from math import floor
 from bs4 import BeautifulSoup
+from trainlib import resolve_name_to_code, get_fares, price_calc
 
 providers = {"London Northwestern Railway": "LNER", "Avanti West Coast": "Avanti", "South Western Railway": "SWR"}
 return_types = {"SUPER OFFPEAK R": "SOPR", "OFF-PEAK R": "OPR", "OFF-PEAK DAY R": "OPDR", "SUP OFFPK DAY R": "SOPDR"}
-station_from = "Rugby"   # todo multiple departure stations
-station_to = "Blaenau Ffestiniog"
+station_from = "Lincoln"   # todo multiple departure stations
+station_to = "Edinburgh"   # todo multiple arrival stations
 arr_or_dep = "dep"
-dates_out = ["11-08-22", "12-08-22", "13-08-22"]
+# every wed, fri, sat and sun in dec 2024 in format dd-mm-yy until the 16th dec and after the 6th dec
+dates_out = ["08-12-23", "10-12-23", "11-12-23", "12-12-23",]
 time_from_out = "04:30"
-time_to_out = "15:00"
-dates_ret = ["13-08-22", "14-08-22", "15-08-22"]
+time_to_out = "11:59"
+# every fri, sat and sunday in feb 2024 in format dd-mm-yy
+dates_ret = ["08-12-23", "10-12-23", "11-12-23", "12-12-23",]
 time_from_ret = "04:30"
-time_to_ret = "16:30"
-#price_tolerance = 1.75
-price_tolerance = 999
-adults = 2
-saver_16_17 = 1
-saver_16_25 = False
-max_split = 2
-try:
-    from_code = get(f"https://www.brfares.com/ac_loc?term={station_from}").json()[0]["code"]
-except IndexError:
-    print(f"Station, {station_from}, not found")
-    exit()
-try:
-    to_code = get(f"https://www.brfares.com/ac_loc?term={station_to}").json()[0]["code"]
-except IndexError:
-    print(f"Station, {station_to}, not found")
-    exit()
+time_to_ret = "20:00"
+price_tolerance = 2
 
 
-def price_calc(original_price):
-    saver_16_17_s = saver_16_17
-    saver_16_25_s = saver_16_25
-    _price = 0
-    for i in range(adults):
-        if saver_16_17_s:
-            saver_16_17_s -= 1
-            _price += original_price*0.5
-        else:
-            if saver_16_25:
-                saver_16_25_s -= 1
-                _price += floor(original_price*0.66*20)/20
-            else:
-                _price += original_price
-    return _price
+from_code = resolve_name_to_code(station_from)
+to_code = resolve_name_to_code(station_to)
 
 
 def rtt_get(fr_code, t_fr, t_to, date):
@@ -58,31 +32,20 @@ def rtt_get(fr_code, t_fr, t_to, date):
     return rtt_trains
 
 
-url = f"https://www.brfares.com/querysimple?orig={from_code}&dest={to_code}&rlc="
-prices = get(url).json()['fares']
-p_bands_out = []
+p_bands_out, t_price_out = get_fares(station_from, station_to)
 train_bands_out = {}
-for price in prices:
-    try:
-        price = round(price_calc(float(price['adult']['fare'])/100), 2)
-        if price > 1:
-            train_bands_out.update({price: []})
-            p_bands_out.append(price)
-    except KeyError:
-        pass
-
-trains = []
+for p_band in p_bands_out:
+    train_bands_out.update({p_band: []})
 cheapest_price = p_bands_out[0]
 highest_price = p_bands_out[-1]
-p_bands_out = list(set([p for p in p_bands_out if p <= round(p_bands_out[-1]*price_tolerance, 2)]))
-p_bands_out.sort()
+trains = []
 fastest_train = 9999
 print(f"There is {len(p_bands_out)} price bands, cheapest 3 are {p_bands_out[:3]}")
 print(f"Starting scan between {dates_out[0]} and {dates_out[-1]} between {time_to_out} and {time_from_out}")
 
 for date in dates_out:
     t_fr, t_to = time_from_out.replace(":", ""), time_to_out.replace(":", "")
-    rtt_trains_out = rtt_get(from_code, t_fr, t_to, date)
+    #rtt_trains_out = rtt_get(from_code, t_fr, t_to, date)
     print(f"Scanning trains for {date}")
     date = date.replace("-", "")
     trains_day = []
@@ -90,6 +53,8 @@ for date in dates_out:
     while True:
         url = f"https://ojp.nationalrail.co.uk/service/timesandfares/" \
               f"{from_code}/{to_code}/{date}/{t_fr}/{arr_or_dep}"
+        #url = f"https://www.nationalrail.co.uk/journey-planner/?type=single&origin=" \  # todo new NRE API
+        #      f"{from_code}&destination={to_code}&leavingType=departing&leavingDate={date}&leavingHour=04&leavingMin=30&adults=1"
         t_trains = []
         t_trains = BeautifulSoup(get(url).text, "html.parser").prettify()
         t_trains = [train.split("""}\n""")[0] for train in t_trains.split("""{"jsonJourneyBreakdown":""")[1:]]
@@ -191,21 +156,7 @@ if not len(trains) == 0:
     if price_tolerance:
         print(f"\nTrains above £{round(cheapest_price*price_tolerance, 2)} have been excluded")
     print(f"Standard prices above £{round(highest_price*3, 2)} have been excluded")
-    standard_off_r = None
-    off_r = [9999, None]
-    for t_price in prices:
-        if t_price['ticket']['longname'] not in ["ADVANCE", "ADVANCE 1ST"]:
-            try:
-                price = round(price_calc(int(t_price['adult']['fare'])/100), 2)
-                if highest_price*3 > price > 1.10:
-                    print(f"{t_price['ticket']['longname']} - £{price}")
-                    if t_price['ticket']['longname'] in ["SUPER OFFPEAK R", "OFF-PEAK R", "OFF-PEAK DAY R",
-                                                         "SUP OFFPK DAY R"]:
-                        if price < off_r[0]:
-                            off_r = [round(price, 2), return_types[t_price['ticket']['longname']]]
-            except KeyError:
-                pass
-
+    [print(t_price) for t_price in t_price_out]
     print(f"Fastest train is {fastest_train} minutes")
     print(f"Cheapest advance train(s) £{cheapest_price}")
     band_num = 0
@@ -220,45 +171,34 @@ if not len(trains) == 0:
                       f"Arr {train['arrivalStationCRS']} {train['arrivalTime']} "
                       f"({train['durationHours']}h{train['durationMinutes']}m) {train['changes']} 🔄 "
                       f"£{price} on {train['fareProvider']} - Ticket: {url}")
-            if off_r != [9999, None]:
-                if price*2 > off_r[0]:
-                    print(f"Return estimated price: £{price*2}, £{round(off_r[0]-price*2, 2)} "
-                          f"loss (£{off_r[0]} {off_r[1]})")
-                    print("[!] off-peak return is cheaper than advance single tickets")
-                else:
-                    print(f"Return estimated price: £{price*2}, £{round(off_r[0]-price*2, 2)} "
-                          f"saving (£{off_r[0]} {off_r[1]})")
-                    if price == cheapest_price:
-                        cheapest_out_train = [date, train, url]
+            #if off_r != [9999, None]:  # todo possible to re-add if scan S and R in fares function
+            #    if price*2 > off_r[0]:
+            #        print(f"Return estimated price: £{price*2}, £{round(off_r[0]-price*2, 2)} "
+            #              f"loss (£{off_r[0]} {off_r[1]})")
+            #        print("[!] off-peak return is cheaper than advance single tickets")
+            #    else:
+            #        print(f"Return estimated price: £{price*2}, £{round(off_r[0]-price*2, 2)} "
+            #              f"saving (£{off_r[0]} {off_r[1]})")
+            #        if price == cheapest_price:
+            #            cheapest_out_train = [date, train, url]
             else:
                 print(f"Return estimated price: £{price*2}")
 
 
 print(f"\n-------------------------------------\nRETURN TRAINS")
-url = f"https://www.brfares.com/querysimple?orig={to_code}&dest={from_code}&rlc="
-prices = get(url).json()['fares']
-p_bands_ret = []
+p_bands_ret, t_price_ret = get_fares(station_from, station_to)
 train_bands_ret = {}
-for price in prices:
-    try:
-        price = round(price_calc(float(price['adult']['fare'])/100), 2)
-        if price > 1:
-            train_bands_ret.update({price: []})
-            p_bands_ret.append(price)
-    except KeyError:
-        pass
-
-trains = []
+for p_band in p_bands_ret:
+    train_bands_ret.update({p_band: []})
 cheapest_price = p_bands_ret[0]
 highest_price = p_bands_ret[-1]
+trains = []
 fastest_train = 9999
-p_bands_ret = list(set([p for p in p_bands_ret if p <= round(p_bands_ret[-1]*price_tolerance, 2)]))
-p_bands_ret.sort()
 print(f"Starting scan between {dates_ret[0]} and {dates_ret[-1]} between {time_from_ret} and {time_to_ret}")
 
 for date in dates_ret:
     t_fr, t_to = time_from_ret.replace(":", ""), time_to_ret.replace(":", "")
-    rtt_trains_in = rtt_get(to_code, t_fr, t_to, date)
+    #rtt_trains_in = rtt_get(to_code, t_fr, t_to, date)
     print(f"Scanning trains for {date}")
     date = date.replace("-", "")
     trains_day = []
@@ -367,21 +307,7 @@ if not len(trains) == 0:
     if price_tolerance:
         print(f"\nTrains above £{round(cheapest_price*price_tolerance, 2)} have been excluded")
     print(f"Standard prices above £{round(highest_price*3, 2)} have been excluded")
-    standard_off_r = None
-    off_r = [9999, None]
-    for t_price in prices:
-        if t_price['ticket']['longname'] not in ["ADVANCE", "ADVANCE 1ST"]:
-            try:
-                price = round(price_calc(int(t_price['adult']['fare'])/100), 2)
-                if highest_price*3 > price > 1.10:
-                    print(f"{t_price['ticket']['longname']} - £{price}")
-                    if t_price['ticket']['longname'] in ["SUPER OFFPEAK R", "OFF-PEAK R", "OFF-PEAK DAY R",
-                                                         "SUP OFFPK DAY R"]:
-                        if price < off_r[0]:
-                            off_r = [round(price, 2), return_types[t_price['ticket']['longname']]]
-            except KeyError:
-                pass
-
+    [print(t_price) for t_price in t_price_out]
     print(f"Fastest train is {fastest_train} minutes")
     print(f"Cheapest advance train(s) £{cheapest_price}")
     band_num = 0
@@ -396,24 +322,24 @@ if not len(trains) == 0:
                       f"Arr {train['arrivalStationCRS']} {train['arrivalTime']} "
                       f"({train['durationHours']}h{train['durationMinutes']}m) {train['changes']} 🔄 "
                       f"£{price} on {train['fareProvider']} - Ticket: {url}")
-            if off_r != [9999, None]:
-                if price*2 > off_r[0]:
-                    print(f"Return estimated price: £{price*2}, £{round(off_r[0]-price*2, 2)} "
-                          f"loss (£{off_r[0]} {off_r[1]})")
-                    print("[!] off-peak return is cheaper than advance single tickets")
-                else:
-                    print(f"Return estimated price: £{price*2}, £{round(off_r[0]-price*2, 2)} "
-                          f"saving (£{off_r[0]} {off_r[1]})")
-                    if price == cheapest_price:
-                        cheapest_ret_train = [date, train, url]
-            else:
-                print(f"Return estimated price: £{price*2}")
+            #if off_r != [9999, None]:
+            #    if price*2 > off_r[0]:
+            #        print(f"Return estimated price: £{price*2}, £{round(off_r[0]-price*2, 2)} "
+            #              f"loss (£{off_r[0]} {off_r[1]})")
+            #        print("[!] off-peak return is cheaper than advance single tickets")
+            #    else:
+            #        print(f"Return estimated price: £{price*2}, £{round(off_r[0]-price*2, 2)} "
+            #              f"saving (£{off_r[0]} {off_r[1]})")
+            #        if price == cheapest_price:
+            #            cheapest_ret_train = [date, train, url]
+            #else:
+            #    print(f"Return estimated price: £{price*2}")
 
 print("\nPlease check https://www.raileasy.co.uk/ for any cheaper tickets\n")
 if cheapest_out_train and cheapest_ret_train:
     combined_price = round(float(cheapest_out_train[1]['farePrice'])+float(cheapest_ret_train[1]['farePrice']), 2)
-    print(f"Found cheapest combined ticket for £{combined_price}, £{round(off_r[0]-price*2, 2)} "
-          f"saving (£{off_r[0]} {off_r[1]})")
+    print(f"Found cheapest combined ticket for £{combined_price}")#, £{round(off_r[0]-price*2, 2)} "
+          #f"saving (£{off_r[0]} {off_r[1]})")
     for date, train, url in [cheapest_out_train, cheapest_ret_train]:
         price = float(train['farePrice'])
         print(f"{date} - Dep {train['departureStationCRS']} {train['departureTime']} -> "

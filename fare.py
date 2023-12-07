@@ -5,16 +5,16 @@ from trainlib import resolve_name_to_code, get_fares, price_calc
 providers = {"London Northwestern Railway": "LNER", "Avanti West Coast": "Avanti", "South Western Railway": "SWR"}
 return_types = {"SUPER OFFPEAK R": "SOPR", "OFF-PEAK R": "OPR", "OFF-PEAK DAY R": "OPDR", "SUP OFFPK DAY R": "SOPDR"}
 station_from = "Lincoln"   # todo multiple departure stations
-station_to = "Edinburgh"   # todo multiple arrival stations
+station_to = "London kings cross"   # todo multiple arrival stations
 arr_or_dep = "dep"
-# every wed, fri, sat and sun in dec 2024 in format dd-mm-yy until the 16th dec and after the 6th dec
-dates_out = ["08-12-23", "10-12-23", "11-12-23", "12-12-23",]
-time_from_out = "04:30"
-time_to_out = "11:59"
-# every fri, sat and sunday in feb 2024 in format dd-mm-yy
-dates_ret = ["08-12-23", "10-12-23", "11-12-23", "12-12-23",]
-time_from_ret = "04:30"
-time_to_ret = "20:00"
+# every WED, fri, sat in feb 2024 in format dd-mm-yy
+dates_out = ["04-03-24", "08-03-24", "11-03-24", "15-03-24", "18-03-24"]
+time_from_out = "05:30"
+time_to_out = "21:00"
+# every mon in feb 2024 in format dd-mm-yy
+dates_ret = ["04-03-24", "08-03-24", "11-03-24", "15-03-24", "18-03-24"]
+time_from_ret = "05:30"
+time_to_ret = "21:00"
 price_tolerance = 2
 
 

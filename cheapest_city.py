@@ -1,7 +1,7 @@
 from trainlib import resolve_name_to_code, get_fares
 
 while True:
-    station_from = "Lincoln"
+    station_from = input("Enter start station: ")
     station_to = input("Enter destination: ")
 
     try:
